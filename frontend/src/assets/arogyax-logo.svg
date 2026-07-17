@@ -1,0 +1,42 @@
+<svg width="1264" height="843" viewBox="0 0 1264 843" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1264" height="843" fill="white"/>
+  <g transform="translate(230 300)">
+    <rect x="64" y="0" width="74" height="70" rx="13" fill="url(#blueTop)"/>
+    <rect x="0" y="56" width="120" height="74" rx="16" fill="url(#blueLeft)"/>
+    <rect x="140" y="56" width="64" height="74" rx="10" fill="url(#orangeRight)"/>
+    <rect x="64" y="132" width="74" height="64" rx="13" fill="url(#greenBottom)"/>
+    <path d="M40 160C116 150 174 48 204 32C153 86 122 153 88 181C72 194 53 204 19 207C27 195 34 179 40 160Z" fill="url(#swooshBlue)"/>
+    <path d="M42 69L101 128L225 31C186 84 150 118 105 176L42 69Z" fill="url(#swooshGreen)"/>
+    <path d="M80 38H92V51H80V38ZM101 38H113V51H101V38ZM122 38H134V51H122V38ZM84 62H91V75H84V62ZM97 62H104V75H97V62ZM110 62H117V75H110V62ZM123 62H130V75H123V62ZM91 82H100V96H91V82ZM109 82H118V96H109V82Z" fill="white"/>
+  </g>
+  <text x="462" y="423" font-family="Arial, Helvetica, sans-serif" font-size="124" font-weight="800" fill="#0A66B3">Arogya</text>
+  <text x="835" y="423" font-family="Arial, Helvetica, sans-serif" font-size="128" font-weight="900" fill="#FF5A1F">X</text>
+  <text x="462" y="486" font-family="Arial, Helvetica, sans-serif" font-size="34" font-style="italic" fill="#111827">One QR, One Health Identity.</text>
+  <defs>
+    <linearGradient id="blueTop" x1="64" y1="0" x2="137" y2="70" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0EA5E9"/>
+      <stop offset="1" stop-color="#0369A1"/>
+    </linearGradient>
+    <linearGradient id="blueLeft" x1="0" y1="56" x2="120" y2="130" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B74C7"/>
+      <stop offset="1" stop-color="#064B93"/>
+    </linearGradient>
+    <linearGradient id="orangeRight" x1="140" y1="56" x2="204" y2="130" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB020"/>
+      <stop offset="1" stop-color="#FF5A1F"/>
+    </linearGradient>
+    <linearGradient id="greenBottom" x1="64" y1="132" x2="138" y2="196" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22C55E"/>
+      <stop offset="1" stop-color="#0E7490"/>
+    </linearGradient>
+    <linearGradient id="swooshBlue" x1="19" y1="32" x2="225" y2="207" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#075985"/>
+      <stop offset="1" stop-color="#0EA5E9"/>
+    </linearGradient>
+    <linearGradient id="swooshGreen" x1="42" y1="31" x2="225" y2="176" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8"/>
+      <stop offset="0.55" stop-color="#22C55E"/>
+      <stop offset="1" stop-color="#84CC16"/>
+    </linearGradient>
+  </defs>
+</svg>

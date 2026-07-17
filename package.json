@@ -1,0 +1,22 @@
+{
+  "name": "arogax2-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "A multi-service MERN setup for patient, clinic, laboratory, and hospital modules",
+  "scripts": {
+    "install:all": "npm install --prefix backend/auth && npm install --prefix backend/patient && npm install --prefix backend/clinic && npm install --prefix backend/laboratory && npm install --prefix backend/hospital && npm install --prefix frontend",
+    "dev": "concurrently -n auth,patient,clinic,laboratory,hospital,frontend -c gray,blue,green,yellow,magenta,cyan \"npm --prefix backend/auth run dev\" \"npm --prefix backend/patient run dev\" \"npm --prefix backend/clinic run dev\" \"npm --prefix backend/laboratory run dev\" \"npm --prefix backend/hospital run dev\" \"npm --prefix frontend run dev\"",
+    "dev:auth": "npm --prefix backend/auth run dev",
+    "dev:patient": "npm --prefix backend/patient run dev",
+    "dev:clinic": "npm --prefix backend/clinic run dev",
+    "dev:laboratory": "npm --prefix backend/laboratory run dev",
+    "dev:hospital": "npm --prefix backend/hospital run dev",
+    "dev:frontend": "npm --prefix frontend run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^8.0.0"
+  },
+  "dependencies": {
+    "react-icons": "^5.7.0"
+  }
+}
