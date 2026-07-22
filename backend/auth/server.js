@@ -928,10 +928,19 @@ app.put('/api/auth/clinic/location', async (req, res) => {
 
 // POST /api/auth/lab-report  —  Lab uploads a report (PDF/Image as base64) for a patient
 app.post('/api/auth/lab-report', async (req, res) => {
-  const { patientId, patientName, labId, labName, reportTitle, testType, fileName, fileType, fileData, fileMimeType } = req.body;
-  if (!patientId || !patientName || !labId || !labName || !reportTitle || !fileName || !fileType || !fileData || !fileMimeType) {
-    return res.status(400).json({ message: 'Missing required fields: patientId, patientName, labId, labName, reportTitle, fileName, fileType, fileData, fileMimeType' });
+  let { patientId, patientName, labId, labName, reportTitle, testType, fileName, fileType, fileData, fileMimeType } = req.body;
+
+  patientName = patientName || 'Patient';
+  labId = labId || 'LAB-DEFAULT';
+  labName = labName || 'Laboratory';
+  reportTitle = reportTitle || fileName || 'Lab Report';
+  fileType = fileType || 'image';
+  fileMimeType = fileMimeType || (fileType === 'pdf' ? 'application/pdf' : 'image/jpeg');
+
+  if (!patientId || !fileData || !fileName) {
+    return res.status(400).json({ message: 'Missing required report file data or patient reference.' });
   }
+
   try {
     const report = new LabReport({
       patientId,

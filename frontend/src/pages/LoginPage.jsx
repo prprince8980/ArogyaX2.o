@@ -157,22 +157,47 @@ function LoginPage() {
   }, []);
 
   const handleCredentialResponse = async (response) => {
-    const token = response.credential;
+    const token = response.credential || response.code;
     if (!token) return;
 
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split('')
-        .map((c) => `%${(`00${c.charCodeAt(0).toString(16)}`).slice(-2)}`)
-        .join('')
-    );
-    const profile = JSON.parse(jsonPayload);
+    if (typeof token !== 'string' || !token.includes('.') || token.startsWith('4/')) {
+      console.warn('Received non-JWT credential or OAuth code:', token);
+      setStatusMessage(`Received authorization code instead of Google ID token (${token.substring(0, 15)}...). Please sign in via Google login standard popup.`);
+      return;
+    }
+
+    const parts = token.split('.');
+    if (parts.length < 2 || !parts[1]) {
+      setStatusMessage('Invalid JWT token received from Google login.');
+      return;
+    }
+
+    let profile = {};
+    try {
+      const base64Url = parts[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split('')
+          .map((c) => `%${(`00${c.charCodeAt(0).toString(16)}`).slice(-2)}`)
+          .join('')
+      );
+      profile = JSON.parse(jsonPayload);
+    } catch (e) {
+      console.error('Failed to parse Google JWT payload:', e);
+      setStatusMessage('Failed to parse Google login response token.');
+      return;
+    }
+
     const { email, name, sub } = profile;
+    if (!email) {
+      setStatusMessage('No email address found in Google token.');
+      return;
+    }
+
     setAuthEmail(email);
-    setAuthName(name);
-    setAuthGoogleId(sub);
+    setAuthName(name || '');
+    setAuthGoogleId(sub || '');
     setAuthCredential(token);
     setStatusMessage('');
 

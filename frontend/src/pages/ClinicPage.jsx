@@ -231,65 +231,121 @@ function ClinicPage() {
     }
   };
 
-  const startQrScanner = useCallback(() => {
+  const startQrScanner = useCallback(async () => {
     setScannerStep('camera');
     setScanError('');
-    setTimeout(() => {
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setScanError('Camera API is not supported or site is accessed over insecure HTTP. Please use http://localhost:5173 or HTTPS.');
+      return;
+    }
+
+    // Force browser permission prompt if not yet granted
+    try {
+      const testStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      testStream.getTracks().forEach((track) => track.stop());
+    } catch (permErr) {
+      console.error('Camera permission check failed:', permErr);
+      if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
+        setScanError('Camera permission was blocked. Please click the lock/camera icon in your browser URL bar to allow camera access.');
+      } else {
+        setScanError('Camera not accessible: ' + (permErr.message || 'Please check camera permissions in browser.'));
+      }
+      return;
+    }
+
+    setTimeout(async () => {
       const qrElement = document.getElementById('clinic-qr-reader');
       if (!qrElement) return;
-      const scanner = new Html5Qrcode('clinic-qr-reader');
-      html5QrRef.current = scanner;
-      scanner.start(
-        { facingMode: 'environment' },
-        { fps: 12, qrbox: { width: 240, height: 240 } },
-        async (decodedText) => {
-          // Stop camera immediately after a successful scan
-          try { await scanner.stop(); } catch (_) {}
-          html5QrRef.current = null;
 
-          // Parse QR payload
-          let payload = {};
-          try { payload = JSON.parse(decodedText); } catch (_) { payload = { name: decodedText }; }
+      if (html5QrRef.current) {
+        try { await html5QrRef.current.stop(); } catch (_) {}
+        html5QrRef.current = null;
+      }
 
-          // Try to enrich with live patient data from backend
-          if (payload.patientId) {
-            try {
-              const res = await fetch(`http://localhost:5000/api/auth/patient-by-id?patientId=${payload.patientId}`);
-              if (res.ok) {
-                const data = await res.json();
-                if (data.success && data.patient) {
-                  const p = data.patient;
-                  payload = {
-                    ...payload,
-                    name: p.fullName || payload.name,
-                    dob: p.dob ? new Date(p.dob).toLocaleDateString() : payload.dob,
-                    gender: p.gender || payload.gender,
-                    bloodType: p.bloodGroup || payload.bloodType,
-                    allergies: p.allergies || payload.allergies,
-                    chronicIllnesses: Array.isArray(p.chronicConditions) ? p.chronicConditions.join(', ') : payload.chronicIllnesses,
-                    currentMedications: p.currentMedications || '',
-                    emergencyContact: p.emergencyContactName ? `${p.emergencyContactName} (${p.emergencyRelationship}) — ${p.emergencyPhone}` : payload.emergencyContact,
-                    address: p.address || payload.address,
-                    email: data.account?.email || payload.email,
-                  };
-                }
-              }
-            } catch (_) { /* Use payload from QR as fallback */ }
-          }
-
-          setScannedPatient(payload);
-          setScanReportForm({ title: '', type: 'Diagnosis', notes: '' });
-          setScannerStep('info');
-          setToast(`✅ QR Scanned: ${payload.name || 'Patient'} loaded.`);
-          setTimeout(() => setToast(''), 4000);
-          fetchScannedPatientReports(payload.patientId || payload.id);
-        },
-        (errorMsg) => { /* ignore per-frame errors */ }
-      ).catch((err) => {
-        setScanError('Camera not accessible. Please allow camera permission.');
-        console.error('QR scanner error:', err);
+      const scanner = new Html5Qrcode('clinic-qr-reader', {
+        verbose: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true
+        }
       });
-    }, 300);
+      html5QrRef.current = scanner;
+
+      const scanConfig = {
+        fps: 30,
+        qrbox: (viewfinderWidth, viewfinderHeight) => {
+          const minDim = Math.min(viewfinderWidth, viewfinderHeight);
+          const size = Math.floor(minDim * 0.85);
+          return { width: size, height: size };
+        },
+        aspectRatio: 1.0,
+        disableFlip: false
+      };
+
+      const handleSuccess = async (decodedText) => {
+        try { await scanner.stop(); } catch (_) {}
+        html5QrRef.current = null;
+
+        let payload = null;
+        try { payload = JSON.parse(decodedText); } catch (_) { payload = null; }
+
+        if (!payload || (!payload.patientId && !payload.email) || (payload.name && payload.name.startsWith('4/'))) {
+          setScanError(`Scanned code is not a valid ArogyaX Patient QR code (${decodedText.substring(0, 20)}...). Please scan a valid Patient QR code.`);
+          return;
+        }
+
+        if (payload.patientId) {
+          try {
+            const res = await fetch(`http://localhost:5000/api/auth/patient-by-id?patientId=${payload.patientId}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.success && data.patient) {
+                const p = data.patient;
+                payload = {
+                  ...payload,
+                  name: p.fullName || payload.name,
+                  dob: p.dob ? new Date(p.dob).toLocaleDateString() : payload.dob,
+                  gender: p.gender || payload.gender,
+                  bloodType: p.bloodGroup || payload.bloodType,
+                  allergies: p.allergies || payload.allergies,
+                  chronicIllnesses: Array.isArray(p.chronicConditions) ? p.chronicConditions.join(', ') : payload.chronicIllnesses,
+                  currentMedications: p.currentMedications || '',
+                  emergencyContact: p.emergencyContactName ? `${p.emergencyContactName} (${p.emergencyRelationship}) — ${p.emergencyPhone}` : payload.emergencyContact,
+                  address: p.address || payload.address,
+                  email: data.account?.email || payload.email,
+                };
+              }
+            }
+          } catch (_) {}
+        }
+
+        setScannedPatient(payload);
+        setScanReportForm({ title: '', type: 'Diagnosis', notes: '' });
+        setScannerStep('info');
+        setToast(`✅ QR Scanned: ${payload.name || 'Patient'} loaded.`);
+        setTimeout(() => setToast(''), 4000);
+        fetchScannedPatientReports(payload.patientId || payload.id);
+      };
+
+      const handleError = () => {};
+
+      try {
+        await scanner.start({ facingMode: 'environment' }, scanConfig, handleSuccess, handleError);
+      } catch (err1) {
+        console.warn('Environment camera constraint failed, attempting front/user camera:', err1);
+        try {
+          await scanner.start({ facingMode: 'user' }, scanConfig, handleSuccess, handleError);
+        } catch (err2) {
+          console.warn('User camera failed, attempting default camera input:', err2);
+          try {
+            await scanner.start(true, scanConfig, handleSuccess, handleError);
+          } catch (err3) {
+            setScanError('Unable to start camera stream. Please ensure camera is connected and permissions are allowed.');
+            console.error('All camera startup attempts failed:', err3);
+          }
+        }
+      }
+    }, 100);
   }, []);
 
   const stopQrScanner = useCallback(async () => {

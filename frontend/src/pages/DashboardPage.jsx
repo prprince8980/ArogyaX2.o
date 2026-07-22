@@ -315,7 +315,7 @@ function DashboardPage() {
                   padding: '1.25rem',
                   display: 'flex',
                   flexDirection: 'column',
-                  justify-content: 'space-between',
+                  justifyContent: 'space-between',
                   boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
                 }}
               >

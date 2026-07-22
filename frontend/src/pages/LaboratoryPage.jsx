@@ -14,16 +14,24 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 function getStoredLabUser() {
   try {
     const user = JSON.parse(localStorage.getItem('arogax2User') || 'null');
+    if (!user) return { labId: '', labName: '', accountId: '', email: '', fallbackName: '' };
+
+    // Check direct properties saved by login or onboarding
+    const directLabId = user.profileId || user.labId || user._id || user.accountId || '';
+    const directLabName = user.name || user.labName || user.accountName || 'Laboratory';
+
+    // Check nested member list if full account object was saved
     const labMember = user?.members?.find(m => m.role === 'laboratory');
+
     return { 
-      labId: labMember?.profileId || '',
-      labName: labMember?.name || '',
-      accountId: user?.accountId || '',
+      labId: labMember?.profileId || directLabId || 'LAB-SESSION-DEFAULT',
+      labName: labMember?.name || directLabName || 'Laboratory',
+      accountId: user?.accountId || user?._id || '',
       email: user?.email || '',
-      fallbackName: user?.accountName || ''
+      fallbackName: user?.accountName || directLabName || 'Laboratory'
     };
   } catch (_) {
-    return { labId: '', labName: '', accountId: '', email: '', fallbackName: '' };
+    return { labId: 'LAB-SESSION-DEFAULT', labName: 'Laboratory', accountId: '', email: '', fallbackName: 'Laboratory' };
   }
 }
 
@@ -51,15 +59,30 @@ const mapBackendReportToCard = (report) => ({
   statusClass: getStatusClass(report.status),
 });
 
-const normalizePatientFromQr = (payload) => ({
-  patientId: payload.patientId || payload.id || '',
-  name: payload.name || payload.fullName || 'Unknown Patient',
-  dob: payload.dob || payload.dateOfBirth || '',
-  gender: payload.gender || '',
-  bloodType: payload.bloodType || payload.bloodGroup || '',
-  allergies: Array.isArray(payload.allergies) ? payload.allergies.join(', ') : (payload.allergies || ''),
-  email: payload.email || '',
-});
+const normalizePatientFromQr = (payload) => {
+  if (!payload || typeof payload !== 'object') return null;
+  const patientId = payload.patientId || payload.id || '';
+  const email = payload.email || '';
+  const name = payload.name || payload.fullName || '';
+
+  // Validate patient fields: reject non-patient payloads or OAuth tokens starting with 4/
+  if (!patientId && !email && !payload.patientName) {
+    return null;
+  }
+  if (name && (name.startsWith('4/') || name.includes('4/0AXEQ'))) {
+    return null;
+  }
+
+  return {
+    patientId: patientId || email || '',
+    name: (name && !name.startsWith('4/')) ? name : 'Patient',
+    dob: payload.dob || payload.dateOfBirth || '',
+    gender: payload.gender || '',
+    bloodType: payload.bloodType || payload.bloodGroup || '',
+    allergies: Array.isArray(payload.allergies) ? payload.allergies.join(', ') : (payload.allergies || ''),
+    email: email || '',
+  };
+};
 
 const normalizePatientFromEmailResult = (result, email) => {
   const profile = result?.profile || {};
@@ -118,8 +141,43 @@ const LaboratoryPage = () => {
   const html5QrRef = useRef(null);
   const reportUploadRef = useRef(null);
   const imageUploadRef = useRef(null);
+  const qrImageRef = useRef(null);
   const userMenuRef = useRef(null);
   const displayLabName = labProfile?.labName || labSession.labName || labSession.fallbackName || 'Laboratory';
+
+  const handleQrImageFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setScanError('');
+    try {
+      const html5Qr = new Html5Qrcode('lab-qr-temp-reader', { verbose: false });
+      const decodedText = await html5Qr.scanFile(file, true);
+      try { html5Qr.clear(); } catch (_) {}
+
+      let payload = null;
+      try {
+        payload = JSON.parse(decodedText);
+      } catch (_) {
+        payload = null;
+      }
+
+      const patient = normalizePatientFromQr(payload);
+      if (!patient) {
+        setScanError(`Scanned image does not contain a valid ArogyaX Patient QR code. (${decodedText.substring(0, 20)}...). Please upload a valid Patient QR code image or find patient by Email.`);
+        setScannerStep('choice');
+        return;
+      }
+
+      setScannedPatient(patient);
+      setScannerStep('info');
+      setScanError('');
+    } catch (err) {
+      console.error('QR file scan error:', err);
+      setScanError('Could not detect a valid QR code in the uploaded image. Please ensure the QR code is clearly visible or search by Patient Email.');
+      setScannerStep('choice');
+    }
+  };
 
   // Clean up scanner instance if the component unmounts unexpectedly
   useEffect(() => {
@@ -220,35 +278,95 @@ const LaboratoryPage = () => {
     }
   };
 
-  const startQrScanner = () => {
+  const startQrScanner = async () => {
     setScannerStep('camera');
-    setTimeout(() => {
-      const scanner = new Html5Qrcode('lab-qr-reader');
-      html5QrRef.current = scanner;
-      scanner.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 240, height: 240 } },
-        (decodedText) => {
-          // Attempt to safely stop the video track
-          try { 
-            scanner.stop().then(() => { html5QrRef.current = null; }); 
-          } catch (_) {}
-          
-          let payload = {};
-          try { 
-            payload = JSON.parse(decodedText); 
-          } catch (_) { 
-            payload = { name: decodedText, note: "Scanned text wasn't JSON" }; 
-          }
-          setScannedPatient(normalizePatientFromQr(payload));
-          setScannerStep('info');
-        },
-        () => {} // frame errors ignored silently
-      ).catch((err) => {
-        setScanError('Camera not accessible. Please verify permissions.');
-        console.error('QR scanner initialize error:', err);
+    setScanError('');
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setScanError('Camera API is not supported or site is accessed over insecure HTTP. Please use http://localhost:5173 or HTTPS.');
+      return;
+    }
+
+    try {
+      const testStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      testStream.getTracks().forEach((track) => track.stop());
+    } catch (permErr) {
+      console.error('Lab camera permission check failed:', permErr);
+      if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
+        setScanError('Camera permission was blocked. Please click the lock/camera icon in your browser URL bar to allow camera access.');
+      } else {
+        setScanError('Camera not accessible: ' + (permErr.message || 'Please check camera permissions in browser.'));
+      }
+      return;
+    }
+
+    setTimeout(async () => {
+      if (html5QrRef.current) {
+        try { await html5QrRef.current.stop(); } catch (_) {}
+        html5QrRef.current = null;
+      }
+
+      const scanner = new Html5Qrcode('lab-qr-reader', {
+        verbose: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true
+        }
       });
-    }, 300);
+      html5QrRef.current = scanner;
+
+      const scanConfig = {
+        fps: 30,
+        qrbox: (viewfinderWidth, viewfinderHeight) => {
+          const minDim = Math.min(viewfinderWidth, viewfinderHeight);
+          const size = Math.floor(minDim * 0.85);
+          return { width: size, height: size };
+        },
+        aspectRatio: 1.0,
+        disableFlip: false
+      };
+
+      const handleSuccess = (decodedText) => {
+        try { 
+          scanner.stop().then(() => { html5QrRef.current = null; }); 
+        } catch (_) {}
+        
+        let payload = null;
+        try { 
+          payload = JSON.parse(decodedText); 
+        } catch (_) { 
+          payload = null; 
+        }
+
+        const patient = normalizePatientFromQr(payload);
+        if (!patient) {
+          setScanError(`Scanned code is not a valid ArogyaX Patient QR code. (${decodedText.substring(0, 20)}...). Please scan a valid Patient QR code or find patient by Email.`);
+          return;
+        }
+
+        setScannedPatient(patient);
+        setScannerStep('info');
+        setScanError('');
+      };
+
+      const handleError = () => {};
+
+      try {
+        await scanner.start({ facingMode: 'environment' }, scanConfig, handleSuccess, handleError);
+      } catch (err1) {
+        console.warn('Environment camera failed, attempting front/user camera:', err1);
+        try {
+          await scanner.start({ facingMode: 'user' }, scanConfig, handleSuccess, handleError);
+        } catch (err2) {
+          console.warn('User camera failed, attempting default camera input:', err2);
+          try {
+            await scanner.start(true, scanConfig, handleSuccess, handleError);
+          } catch (err3) {
+            setScanError('Unable to start camera stream. Please check camera permissions.');
+            console.error('All lab camera startup attempts failed:', err3);
+          }
+        }
+      }
+    }, 50);
   };
 
   const handleCloseScanner = async () => {
@@ -403,20 +521,26 @@ const LaboratoryPage = () => {
 
     try {
       const base64 = await fileToBase64(uploadFile);
-      const isImage = uploadFile.type.startsWith('image/');
+      const isImage = uploadFile.type ? uploadFile.type.startsWith('image/') : /\.(jpg|jpeg|png|webp|gif)$/i.test(uploadFile.name);
       const fileType = isImage ? 'image' : 'pdf';
+      const fileMimeType = uploadFile.type || (isImage ? 'image/jpeg' : 'application/pdf');
+
+      const activeLabId = labSession.labId || labProfile?._id || 'LAB-DEFAULT';
+      const activeLabName = displayLabName || 'Laboratory';
+      const patientId = scannedPatient.patientId || scannedPatient.email || 'PATIENT-DEFAULT';
+      const patientName = scannedPatient.name || 'Patient';
 
       const body = {
-        patientId: scannedPatient.patientId,
-        patientName: scannedPatient.name || 'Unknown Patient',
-        labId: labSession.labId,
-        labName: displayLabName,
-        reportTitle: uploadReportTitle.trim(),
-        testType: uploadTestType,
-        fileName: uploadFile.name,
+        patientId,
+        patientName,
+        labId: activeLabId,
+        labName: activeLabName,
+        reportTitle: uploadReportTitle.trim() || uploadFile.name || 'Lab Report',
+        testType: uploadTestType || 'Blood Test',
+        fileName: uploadFile.name || 'report',
         fileType,
         fileData: base64,
-        fileMimeType: uploadFile.type,
+        fileMimeType,
       };
 
       const res = await fetch(`${API_URL}/api/auth/lab-report`, {
@@ -583,6 +707,14 @@ const LaboratoryPage = () => {
         accept=".jpg,.jpeg,.png,.webp"
         onChange={(e) => handleReportFileSelect(e, 'image')}
       />
+      <input
+        type="file"
+        ref={qrImageRef}
+        style={{ display: 'none' }}
+        accept="image/*"
+        onChange={handleQrImageFileUpload}
+      />
+      <div id="lab-qr-temp-reader" style={{ display: 'none' }} />
 
       {/* SIDEBAR NAVIGATION */}
       <aside className="sidebar">
@@ -1132,20 +1264,30 @@ const LaboratoryPage = () => {
             <div className="modal-body">
               {scannerStep === 'choice' && (
                 <div className="patient-lookup-choice">
+                  {scanError && (
+                    <div className="lab-upload-error" style={{ marginBottom: '1rem' }}>
+                      <FiAlertCircle /> {scanError}
+                    </div>
+                  )}
                   <div className="upload-type-buttons">
                     <button className="upload-type-btn upload-img-btn" onClick={() => handleOpenScanner('camera')}>
                       <FiCamera className="upload-type-icon" />
-                      <span>Scan QR</span>
-                      <small>Use the camera to identify the patient</small>
+                      <span>Camera Scan</span>
+                      <small>Use camera to scan patient QR</small>
+                    </button>
+                    <button className="upload-type-btn upload-img-btn" onClick={() => qrImageRef.current?.click()}>
+                      <FiImage className="upload-type-icon" />
+                      <span>Upload QR Image</span>
+                      <small>Select QR image file from device</small>
                     </button>
                     <button className="upload-type-btn upload-pdf-btn" onClick={() => handleOpenScanner('email')}>
                       <span className="upload-type-icon">@</span>
                       <span>Enter Email ID</span>
-                      <small>Search the patient by registered email</small>
+                      <small>Search patient by registered email</small>
                     </button>
                   </div>
                   <p className="upload-prompt-text">
-                    First identify the patient using QR scan or email lookup, then upload the report with its title.
+                    First identify the patient using camera scan, QR image upload, or email lookup.
                   </p>
                 </div>
               )}
