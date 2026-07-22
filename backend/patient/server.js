@@ -18,6 +18,14 @@ app.get('/api/patient', (req, res) => {
   res.json({ message: 'Patient module ready' });
 });
 
+app.get('/ping', (req, res) => {
+  res.json({ status: 'alive', module: 'patient', timestamp: new Date().toISOString() });
+});
+
 app.listen(PORT, () => {
   console.log(`Patient backend running on port ${PORT}`);
+  setInterval(() => {
+    const targetUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+    fetch(`${targetUrl}/ping`).catch(() => {});
+  }, 60000);
 });

@@ -21,7 +21,23 @@ const MONGO_URI = process.env.MONGO_URI;
 const ADMIN_EMAIL = 'princep4732355@gmail.com';
 const fallbackAccounts = new Map();
 
-app.use(cors({ origin: 'http://localhost:5173' }));
+// Deployment-ready CORS configuration
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:5173', 'https://arogyax2-o.onrender.com'];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, self-ping) or matched origins
+    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production' || origin.endsWith('.onrender.com')) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Permissive CORS for deployed API compatibility
+    }
+  },
+  credentials: true
+}));
+
 app.use(express.json({ limit: '50mb' })); // Increased limit for base64 file uploads
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -42,9 +58,18 @@ const db = mongoose.connection;
 db.on('error', (error) => console.error('MongoDB connection error:', error));
 db.once('open', () => console.log('Connected to MongoDB'));
 
+// Health and Self-Ping keep-alive endpoints
+app.get('/ping', (req, res) => {
+  res.json({ status: 'alive', timestamp: new Date().toISOString() });
+});
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 app.get('/api/auth/health', (req, res) => {
   const databaseStates = ['disconnected', 'connected', 'connecting', 'disconnecting'];
-  res.json({ status: 'Auth backend is running', database: databaseStates[db.readyState] || 'unknown' });
+  res.json({ status: 'Auth backend is running', database: databaseStates[db.readyState] || 'unknown', timestamp: new Date().toISOString() });
 });
 
 const getAccountByEmail = async (email) => {
@@ -988,4 +1013,14 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`Auth backend running on port ${PORT}`);
+
+  // Auto-ping mechanism: automatically pings itself every 60 seconds (1 minute)
+  // so free hosting services like Render do not enter idle sleep state.
+  setInterval(() => {
+    const targetUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+    fetch(`${targetUrl}/ping`)
+      .then((res) => res.json())
+      .then((data) => console.log(`[Keep-Alive Ping OK]: ${data.timestamp}`))
+      .catch((err) => console.warn(`[Keep-Alive Ping Warning]: ${err.message}`));
+  }, 60000);
 });
