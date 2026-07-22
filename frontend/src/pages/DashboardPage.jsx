@@ -5,7 +5,7 @@ import {
   FlaskConical, ShoppingBag, AlertCircle, UserPlus, User, Headset,
   ArrowRight, LogOut
 } from 'lucide-react';
-import arogyaXLogo from '../assets/arogyax-logo.svg';
+import arogyaXLogo from '../assets/arogyax-logo.png';
 import "../styles/pages/DashboardPage.css";
 
 function DashboardPage() {

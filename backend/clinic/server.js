@@ -12,7 +12,7 @@ import Account from '../auth/models/Account.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5002;
 const MONGO_URI = process.env.MONGO_URI || "mongodb://princep4732355:princeP8980@ac-rchrg4i-shard-00-00.jwls0jw.mongodb.net:27017,ac-rchrg4i-shard-00-01.jwls0jw.mongodb.net:27017,ac-rchrg4i-shard-00-02.jwls0jw.mongodb.net:27017/?ssl=true&replicaSet=atlas-10r1tz-shard-0&authSource=admin&appName=Cluster0";
 
 app.use(cors({ origin: 'http://localhost:5173' }));

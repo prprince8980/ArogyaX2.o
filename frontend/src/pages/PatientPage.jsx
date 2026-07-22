@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 import L from 'leaflet';
 import { QRCodeSVG } from 'qrcode.react';
-import arogyaXLogo from '../assets/arogyax-logo.svg';
+import arogyaXLogo from '../assets/arogyax-logo.png';
 import "../styles/pages/PatientPage.css";
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -138,9 +138,14 @@ function PatientPage() {
   const [cartCount, setCartCount] = useState(0);
   const [activePage, setActivePage] = useState('dashboard');
   const [preSelectedClinic, setPreSelectedClinic] = useState(null);
+  const [viewedClinicProfile, setViewedClinicProfile] = useState(null);
   const totalFamilySteps = 3;
   const [myAppointments, setMyAppointments] = useState([]);
   const [clinicReportsFromBackend, setClinicReportsFromBackend] = useState([]);
+  const [labReportsFromBackend, setLabReportsFromBackend] = useState([]);
+  const [loadingLabReports, setLoadingLabReports] = useState(false);
+  const patient = profiles.find((profile) => profile.id === activeProfileId) || profiles[0];
+  const isMainProfile = patient.relationship === 'Self';
 
   const fetchAppointments = async () => {
     if (!storedUser?.accountId) return;
@@ -170,15 +175,43 @@ function PatientPage() {
     }
   };
 
+  const fetchLabReports = async (patientId) => {
+    if (!patientId) return;
+    setLoadingLabReports(true);
+    try {
+      const res = await fetch(`http://localhost:5000/api/auth/lab-reports?patientId=${patientId}`);
+      if (res.ok) {
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await res.json();
+          if (data.success) {
+            setLabReportsFromBackend(data.reports || []);
+          }
+        } else {
+          console.error('Failed to fetch lab reports: response is not JSON');
+        }
+      } else {
+        console.error(`Failed to fetch lab reports: Server returned ${res.status}`);
+      }
+    } catch (error) {
+      console.error('Error fetching lab reports:', error);
+    } finally {
+      setLoadingLabReports(false);
+    }
+  };
+
   useEffect(() => {
     fetchAppointments();
   }, [storedUser?.accountId]);
 
-  // Fetch clinic reports whenever the active patient profile changes
+  // Fetch clinic & lab reports whenever the active patient profile changes
   useEffect(() => {
-    const pid = storedUser?.profile?.patientId || storedUser?.profileId || storedUser?.accountId;
-    if (pid) fetchClinicReports(pid);
-  }, [activeProfileId, storedUser?.profile?.patientId]);
+    const pid = patient?.id || storedUser?.profile?.patientId || storedUser?.profileId || storedUser?.accountId;
+    if (pid) {
+      fetchClinicReports(pid);
+      fetchLabReports(pid);
+    }
+  }, [activeProfileId, patient?.id, storedUser?.profile?.patientId, storedUser?.profileId, storedUser?.accountId]);
 
   useEffect(() => {
     if (!storedUser?.accountId) return;
@@ -203,9 +236,6 @@ function PatientPage() {
       socket.disconnect();
     };
   }, [storedUser?.accountId]);
-
-  const patient = profiles.find((profile) => profile.id === activeProfileId) || profiles[0];
-  const isMainProfile = patient.relationship === 'Self';
 
   useEffect(() => {
     let isMounted = true;
@@ -247,6 +277,32 @@ function PatientPage() {
       clinicName: r.clinicName,
     })),
     ...(patient.reports || []),
+  ];
+
+  const allLabReports = [
+    ...labReportsFromBackend.map((report) => ({
+      id: report._id,
+      reportTitle: report.reportTitle || report.title || 'Laboratory Report',
+      testType: report.testType || report.category || 'Diagnostic Test',
+      labName: report.labName || 'ArogyaX Laboratory',
+      date: report.date || report.createdAt || 'Recently added',
+      status: report.status || 'Uploaded',
+      fileType: report.fileType || (report.fileMimeType === 'application/pdf' ? 'pdf' : 'image'),
+      source: 'backend',
+      raw: report,
+    })),
+    ...(patient.labReports || []).map((report, index) => ({
+      id: report.id || report._id || `local-lab-report-${index}`,
+      reportTitle: report.reportTitle || report.title || report.name || 'Laboratory Report',
+      testType: report.testType || report.category || 'Diagnostic Test',
+      labName: report.labName || report.lab || 'ArogyaX Laboratory',
+      date: report.date || report.reportDate || 'Recently added',
+      status: report.status || 'Uploaded',
+      fileType: report.fileType || (report.fileUrl?.toLowerCase().includes('.pdf') ? 'pdf' : 'image'),
+      fileUrl: report.fileUrl || report.url || '',
+      source: 'local',
+      raw: report,
+    })),
   ];
 
   const filteredReports = allClinicReports.filter((report) => {
@@ -1003,8 +1059,7 @@ function PatientPage() {
       window.handlePopupViewProfile = (clinicId) => {
         const clinic = clinics.find(c => c._id === clinicId);
         if (clinic) {
-          setPreSelectedClinic(clinic);
-          setActivePage('bookAppointment');
+          setViewedClinicProfile(clinic);
         }
       };
 
@@ -1054,12 +1109,12 @@ function PatientPage() {
 
           const popupContent = `
             <div style="font-family: 'Inter', sans-serif; padding: 4px; min-width: 220px; line-height: 1.4;">
-              <h4 style="margin: 0 0 4px; color: #0f172a; font-size: 0.95rem; font-weight: 600;">🏥 ${clinic.clinicName}</h4>
-              <p style="margin: 0 0 4px; color: #475569; font-size: 0.78rem;">📍 ${clinic.clinicAddress || 'No address'}</p>
-              <p style="margin: 0 0 4px; color: #475569; font-size: 0.78rem;">📞 ${clinic.phoneNumber || 'N/A'}</p>
+              <h4 style="margin: 0 0 4px; color: #0f172a; font-size: 0.95rem; font-weight: 600;">🏥 ${clinic.clinicName || clinic.hospitalName || 'Health Center'}</h4>
+              <p style="margin: 0 0 4px; color: #475569; font-size: 0.78rem;">📍 ${clinic.clinicAddress || clinic.address || 'No address'}</p>
+              <p style="margin: 0 0 4px; color: #475569; font-size: 0.78rem;">📞 ${clinic.phoneNumber || clinic.emergencyLandline || 'N/A'}</p>
               <p style="margin: 0 0 10px; color: #2563eb; font-size: 0.8rem; font-weight: 600;">⚡ Distance: ${distText}</p>
               <div style="display: flex; gap: 6px; border-top: 1px solid #f1f5f9; padding-top: 8px; margin-top: 4px;">
-                <button onclick="window.handlePopupBook('${clinic._id}')" style="flex: 1; padding: 6px 10px; background-color: #2563eb; color: white; border: none; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Book Visit</button>
+                ${clinic.isHospital ? '' : `<button onclick="window.handlePopupBook('${clinic._id}')" style="flex: 1; padding: 6px 10px; background-color: #2563eb; color: white; border: none; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Book Visit</button>`}
                 <button onclick="window.handlePopupViewProfile('${clinic._id}')" style="flex: 1; padding: 6px 10px; background-color: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Profile</button>
               </div>
             </div>
@@ -1177,8 +1232,9 @@ function PatientPage() {
               </div>
             ) : (
               filteredClinics.map(clinic => {
-                const distKm = calculateDistance(patientLocation.lat, patientLocation.lng, clinic.latitude, clinic.longitude);
-                const distText = distKm < 1 ? `${(distKm * 1000).toFixed(0)} m` : `${distKm.toFixed(2)} km`;
+                const hasCoords = clinic.latitude !== undefined && clinic.longitude !== undefined && clinic.latitude !== 0;
+                const distKm = hasCoords ? calculateDistance(patientLocation.lat, patientLocation.lng, clinic.latitude, clinic.longitude) : null;
+                const distText = distKm !== null ? (distKm < 1 ? `${(distKm * 1000).toFixed(0)} m` : `${distKm.toFixed(2)} km`) : 'N/A';
                 
                 return (
                   <div 
@@ -1196,7 +1252,7 @@ function PatientPage() {
                       cursor: 'pointer'
                     }}
                     onClick={() => {
-                      if (mapRef.current) {
+                      if (mapRef.current && clinic.latitude && clinic.longitude) {
                         mapRef.current.setView([clinic.latitude, clinic.longitude], 15);
                         const marker = markersRef.current.find(m => {
                           const latLng = m.getLatLng();
@@ -1208,31 +1264,42 @@ function PatientPage() {
                       }
                     }}
                   >
-                    <div style={{ display: 'flex', justifycontent: 'space-between', alignItems: 'flex-start' }}>
-                      <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#0f172a', fontWeight: 600 }}>{clinic.clinicName}</h4>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#0f172a', fontWeight: 600 }}>{clinic.clinicName || clinic.hospitalName || 'Health Center'}</h4>
                       <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#2563eb', whiteSpace: 'nowrap' }}>⚡ {distText}</span>
                     </div>
                     
                     <p style={{ margin: 0, fontSize: '0.75rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <span>📍</span> {clinic.clinicAddress || 'No address registered'}
+                      <span>📍</span> {clinic.clinicAddress || clinic.address || 'No address registered'}
                     </p>
                     
-                    {clinic.phoneNumber && (
+                    {(clinic.phoneNumber || clinic.emergencyLandline) && (
                       <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>
-                        <span>📞</span> {clinic.phoneNumber}
+                        <span>📞</span> {clinic.phoneNumber || clinic.emergencyLandline}
                       </p>
                     )}
                     
                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.5rem' }}>
+                      {!clinic.isHospital && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreSelectedClinic(clinic);
+                            setActivePage('bookAppointment');
+                          }}
+                          style={{ flex: 1, padding: '0.45rem', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          Book Appointment
+                        </button>
+                      )}
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          setPreSelectedClinic(clinic);
-                          setActivePage('bookAppointment');
+                          setViewedClinicProfile(clinic);
                         }}
                         style={{ flex: 1, padding: '0.45rem', backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
                       >
-                        Book Appointment
+                        View Profile
                       </button>
                     </div>
                   </div>
@@ -1490,7 +1557,7 @@ function PatientPage() {
                 </div>
                 <div className="pd-stat-card">
                   <div className="pd-stat-icon">🔬</div>
-                  <div className="pd-stat-value">{patient.labReports?.length || 0}</div>
+                  <div className="pd-stat-value">{allLabReports.length}</div>
                   <div className="pd-stat-label">Lab Reports</div>
                 </div>
                 <div className="pd-stat-card">
@@ -1780,19 +1847,148 @@ function PatientPage() {
               <div className="pd-section-header">
                 <div>
                   <h2>{patient.name}'s Laboratory Reports</h2>
-                  <p className="pd-section-subtitle">Diagnostic test results</p>
+                  <p className="pd-section-subtitle">Diagnostic test results uploaded by your lab</p>
                 </div>
+                <button
+                  className="pd-btn pd-btn-ghost"
+                  style={{ fontSize: '0.82rem' }}
+                  onClick={() => {
+                    const pid = patient?.id || storedUser?.profile?.patientId || storedUser?.profileId || storedUser?.accountId;
+                    if (pid) fetchLabReports(pid);
+                  }}
+                >
+                  ↻ Refresh
+                </button>
               </div>
               <div className="pd-card">
-                {patient.labReports.length > 0 ? (
+                {loadingLabReports ? (
+                  <div style={{ textAlign: 'center', padding: '2.5rem', color: '#64748b' }}>
+                    <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>⏳</div>
+                    <p>Loading your lab reports…</p>
+                  </div>
+                ) : allLabReports.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {patient.labReports.map((report) => (
-                      <div key={report.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.85rem 1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #eaecf0' }}>
-                        <div>
-                          <h4 style={{ margin: '0 0 0.2rem', fontSize: '0.9rem' }}>{report.title}</h4>
-                          <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>Updated {report.updated}</p>
+                    {allLabReports.map((report) => (
+                      <div
+                        key={report.id}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '1rem 1.1rem', background: '#f8fafc', borderRadius: '10px',
+                          border: '1px solid #eaecf0', gap: '1rem', flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', gap: '0.85rem', alignItems: 'center' }}>
+                          <div style={{
+                            width: '40px', height: '40px', borderRadius: '8px',
+                            background: report.fileType === 'pdf' ? '#fff1f2' : '#f5f3ff',
+                            color: report.fileType === 'pdf' ? '#dc2626' : '#6366f1',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '1.25rem', flexShrink: 0
+                          }}>
+                            {report.fileType === 'pdf' ? '📄' : '🖼️'}
+                          </div>
+                          <div>
+                            <h4 style={{ margin: '0 0 0.2rem', fontSize: '0.9rem', fontWeight: 600, color: '#1e293b' }}>
+                              {report.reportTitle}
+                            </h4>
+                            <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              <span>🔬 {report.testType}</span>
+                              <span style={{ color: '#cbd5e1' }}>·</span>
+                              <span style={{ color: '#3b82f6', fontWeight: 600 }}>🏥 {report.labName}</span>
+                              <span style={{ color: '#cbd5e1' }}>·</span>
+                              <span>📅 {report.date}</span>
+                            </p>
+                          </div>
                         </div>
-                        <span className={`pd-badge ${report.status === 'Pending' ? 'pd-badge-amber' : 'pd-badge-green'}`}>{report.status}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                          <span style={{
+                            padding: '0.22rem 0.65rem', borderRadius: '20px', fontSize: '0.74rem', fontWeight: 700,
+                            background: report.status === 'Normal' ? '#dcfce7' : report.status === 'Abnormal' ? '#fee2e2' : '#fef9c3',
+                            color: report.status === 'Normal' ? '#166534' : report.status === 'Abnormal' ? '#dc2626' : '#854d0e'
+                          }}>
+                            {report.status}
+                          </span>
+                          <span style={{
+                            padding: '0.22rem 0.65rem', borderRadius: '20px', fontSize: '0.74rem', fontWeight: 700,
+                            background: report.fileType === 'pdf' ? '#fff1f2' : '#f5f3ff',
+                            color: report.fileType === 'pdf' ? '#dc2626' : '#6366f1',
+                            border: `1px solid ${report.fileType === 'pdf' ? '#fecaca' : '#c4b5fd'}`
+                          }}>
+                            {report.fileType === 'pdf' ? '📄 PDF' : '🖼️ Image'}
+                          </span>
+                          <button
+                            className="pd-btn pd-btn-ghost"
+                            style={{ padding: '0.3rem 0.7rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                            onClick={async () => {
+                              if (report.source === 'local' && report.fileUrl) {
+                                window.open(report.fileUrl, '_blank', 'noopener,noreferrer');
+                                return;
+                              }
+
+                              if (!report.raw?._id) {
+                                alert('This lab report file is not available yet.');
+                                return;
+                              }
+
+                              try {
+                                const res = await fetch(`http://localhost:5000/api/auth/lab-report-file/${report.raw._id}`);
+                                if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+                                const contentType = res.headers.get('content-type');
+                                if (!contentType || !contentType.includes('application/json')) throw new Error('Response is not JSON');
+                                const data = await res.json();
+                                if (data.success) {
+                                  const dataUri = `data:${data.fileMimeType};base64,${data.fileData}`;
+                                  const win = window.open();
+                                  if (data.fileMimeType === 'application/pdf') {
+                                    win.document.write(`<iframe src="${dataUri}" style="width:100%;height:100vh;border:none;"></iframe>`);
+                                  } else {
+                                    win.document.write(`<img src="${dataUri}" style="max-width:100%;display:block;margin:auto;" />`);
+                                  }
+                                } else {
+                                  throw new Error(data.message || 'Failed to load report');
+                                }
+                              } catch (e) { alert(`Could not open file: ${e.message}`); }
+                            }}
+                          >
+                            👁️ View
+                          </button>
+                          <button
+                            className="pd-btn pd-btn-ghost"
+                            style={{ padding: '0.3rem 0.7rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                            onClick={async () => {
+                              if (report.source === 'local' && report.fileUrl) {
+                                const a = document.createElement('a');
+                                a.href = report.fileUrl;
+                                a.download = report.reportTitle;
+                                a.click();
+                                return;
+                              }
+
+                              if (!report.raw?._id) {
+                                alert('This lab report file is not available yet.');
+                                return;
+                              }
+
+                              try {
+                                const res = await fetch(`http://localhost:5000/api/auth/lab-report-file/${report.raw._id}`);
+                                if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+                                const contentType = res.headers.get('content-type');
+                                if (!contentType || !contentType.includes('application/json')) throw new Error('Response is not JSON');
+                                const data = await res.json();
+                                if (data.success) {
+                                  const a = document.createElement('a');
+                                  a.href = `data:${data.fileMimeType};base64,${data.fileData}`;
+                                  a.download = data.fileName || report.reportTitle;
+                                  a.click();
+                                } else {
+                                  throw new Error(data.message || 'Failed to download report');
+                                }
+                              } catch (e) { alert(`Could not download file: ${e.message}`); }
+                            }}
+                          >
+                            ⬇️ Download
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1800,7 +1996,14 @@ function PatientPage() {
                   <div className="pd-empty">
                     <div className="pd-empty-icon">🔬</div>
                     <h3>No lab reports yet</h3>
-                    <p>No laboratory reports are stored for this profile.</p>
+                    <p>Your laboratory will upload reports here after scanning your QR code. Show your QR code to the lab during your next visit.</p>
+                    <button
+                      className="pd-btn pd-btn-primary"
+                      style={{ marginTop: '1rem' }}
+                      onClick={() => setActivePage('qr')}
+                    >
+                      🔲 Show My QR Code
+                    </button>
                   </div>
                 )}
               </div>
@@ -1921,6 +2124,106 @@ function PatientPage() {
               <li>Chronic illnesses: <strong>{patient.chronicIllnesses}</strong></li>
               <li>Emergency contact: <strong>{patient.emergencyContact}</strong></li>
             </ul>
+          </div>
+        </div>
+      )}
+
+      {viewedClinicProfile && (
+        <div className="pd-overlay" onClick={() => setViewedClinicProfile(null)}>
+          <div className="pd-modal" style={{ width: 'min(500px, 100%)' }} onClick={(e) => e.stopPropagation()}>
+            <div className="pd-modal-header">
+              <div>
+                <p style={{ margin: '0 0 0.2rem', fontSize: '0.75rem', color: '#2563eb', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                  {viewedClinicProfile.isHospital ? '🏥 Hospital Profile' : '🏥 Clinic Profile'}
+                </p>
+                <h3 style={{ margin: 0 }}>{viewedClinicProfile.clinicName || viewedClinicProfile.hospitalName}</h3>
+              </div>
+              <button className="pd-btn pd-btn-ghost pd-btn-sm" onClick={() => setViewedClinicProfile(null)}>Close</button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', fontSize: '0.9rem', color: '#334155' }}>
+              {viewedClinicProfile.logoUrl && (
+                <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
+                  <img src={viewedClinicProfile.logoUrl} alt="Logo" style={{ maxHeight: '80px', maxWidth: '100%', borderRadius: '8px' }} />
+                </div>
+              )}
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+                <strong>Speciality:</strong>
+                <span>{viewedClinicProfile.specialityType || viewedClinicProfile.hospitalType || 'General Health'}</span>
+              </div>
+
+              {!viewedClinicProfile.isHospital && viewedClinicProfile.ownerName && (
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+                  <strong>Lead Doctor:</strong>
+                  <span>{viewedClinicProfile.ownerName}</span>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+                <strong>Address:</strong>
+                <span>{viewedClinicProfile.clinicAddress || viewedClinicProfile.address || 'N/A'}</span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+                <strong>Contact:</strong>
+                <span>{viewedClinicProfile.phoneNumber || viewedClinicProfile.emergencyLandline || 'N/A'}</span>
+              </div>
+
+              {!viewedClinicProfile.isHospital && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+                    <strong>Hours:</strong>
+                    <span>
+                      {viewedClinicProfile.morningHours && `Morning: ${viewedClinicProfile.morningHours}`}
+                      {viewedClinicProfile.eveningHours && ` | Evening: ${viewedClinicProfile.eveningHours}`}
+                      {!viewedClinicProfile.morningHours && !viewedClinicProfile.eveningHours && 'N/A'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+                    <strong>Consultation Fee:</strong>
+                    <span style={{ fontWeight: 600, color: '#16a34a' }}>
+                      {viewedClinicProfile.consultationFee ? `$${viewedClinicProfile.consultationFee}` : 'Free / Varies'}
+                    </span>
+                  </div>
+                </>
+              )}
+
+              {viewedClinicProfile.isHospital && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+                    <strong>Beds Count:</strong>
+                    <span>Total: {viewedClinicProfile.totalBeds || 'N/A'} | ICU: {viewedClinicProfile.icuBeds || 'N/A'}</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+                    <strong>Ambulance:</strong>
+                    <span>{viewedClinicProfile.ambulanceAvailable ? '✅ Available' : '❌ Not Available'}</span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
+              <button 
+                className="pd-btn pd-btn-ghost" 
+                onClick={() => setViewedClinicProfile(null)}
+              >
+                Close
+              </button>
+              {!viewedClinicProfile.isHospital && (
+                <button 
+                  className="pd-btn pd-btn-primary"
+                  onClick={() => {
+                    setPreSelectedClinic(viewedClinicProfile);
+                    setViewedClinicProfile(null);
+                    setActivePage('bookAppointment');
+                  }}
+                >
+                  Book Appointment
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

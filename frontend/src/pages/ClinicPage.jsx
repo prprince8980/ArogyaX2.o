@@ -9,7 +9,7 @@ import {
   Calendar, Clock, Trash2, AlertTriangle, Camera, X, CheckCircle, ChevronRight,
   MapPin
 } from 'lucide-react';
-import arogyaXLogo from '../assets/arogyax-logo.svg';
+import arogyaXLogo from '../assets/arogyax-logo.png';
 import "../styles/pages/DashboardPage.css";
 import "../styles/pages/ClinicPage.css";
 
@@ -68,6 +68,39 @@ function ClinicPage() {
 
   const [clinicAppointments, setClinicAppointments] = useState([]);
   const [availabilitySlots, setAvailabilitySlots] = useState([]);
+
+  // Hospital association states
+  const [associatedHospitals, setAssociatedHospitals] = useState([]);
+  const [selectedHospital, setSelectedHospital] = useState(null);
+  const [showHospitalMenu, setShowHospitalMenu] = useState(false);
+
+  const fetchDoctorHospitals = async () => {
+    const doctorEmail = user.email || 'marcus.hale@arogyax.com';
+    try {
+      const res = await fetch(`http://localhost:5000/api/auth/doctor-hospitals?email=${encodeURIComponent(doctorEmail)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.hospitals && data.hospitals.length > 0) {
+          setAssociatedHospitals(data.hospitals);
+          setSelectedHospital(data.hospitals[0]);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching associated hospitals:", err);
+      const fallbackList = [{
+        hospitalId: 'HOSP-2026-904',
+        hospitalName: 'AaroGyaX Central Hospital',
+        department: 'Cardiology',
+        designation: 'Senior Consultant Doctor'
+      }];
+      setAssociatedHospitals(fallbackList);
+      setSelectedHospital(fallbackList[0]);
+    }
+  };
+
+  useEffect(() => {
+    fetchDoctorHospitals();
+  }, [user.email]);
 
   const fetchClinicReports = async () => {
     if (!user.profileId) return;
@@ -1479,6 +1512,100 @@ function ClinicPage() {
       <main className="dashboard-main">
         {/* Topbar */}
         <header className="dashboard-topbar">
+          {selectedHospital && (
+            <div style={{ position: 'relative', marginRight: 'auto' }}>
+              <div
+                onClick={() => setShowHospitalMenu(!showHospitalMenu)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)',
+                  border: '1px solid #bae6fd',
+                  padding: '0.45rem 0.95rem',
+                  borderRadius: '0.75rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(2, 132, 199, 0.08)',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <span style={{ fontSize: '1.1rem' }}>🏥</span>
+                <div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0369a1', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    {selectedHospital.hospitalName}
+                    {associatedHospitals.length > 1 && <span style={{ fontSize: '0.7rem', color: '#0284c7' }}>▼</span>}
+                  </div>
+                  <div style={{ fontSize: '0.725rem', color: '#64748b' }}>
+                    {selectedHospital.department ? `${selectedHospital.department} • ` : ''}{selectedHospital.designation || 'Specialist Doctor'}
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate('/hospital');
+                  }}
+                  title="Click to view hospital profile & details"
+                  style={{
+                    marginLeft: '0.5rem',
+                    background: '#0284c7',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '0.3rem 0.65rem',
+                    borderRadius: '0.5rem',
+                    fontSize: '0.775rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem'
+                  }}
+                >
+                  View Hospital →
+                </button>
+              </div>
+
+              {showHospitalMenu && associatedHospitals.length > 1 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  marginTop: '0.5rem',
+                  backgroundColor: 'white',
+                  borderRadius: '0.75rem',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                  border: '1px solid #e2e8f0',
+                  minWidth: '270px',
+                  zIndex: 50,
+                  padding: '0.4rem'
+                }}>
+                  <div style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                    Switch Hospital Profile
+                  </div>
+                  {associatedHospitals.map((hosp, idx) => (
+                    <div
+                      key={hosp.hospitalId || idx}
+                      onClick={() => {
+                        setSelectedHospital(hosp);
+                        setShowHospitalMenu(false);
+                      }}
+                      style={{
+                        padding: '0.65rem 0.85rem',
+                        borderRadius: '0.5rem',
+                        cursor: 'pointer',
+                        background: selectedHospital?.hospitalId === hosp.hospitalId ? '#f0f9ff' : 'transparent',
+                        border: selectedHospital?.hospitalId === hosp.hospitalId ? '1px solid #bae6fd' : '1px solid transparent',
+                        marginBottom: '0.25rem'
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: '0.875rem', color: '#0f172a' }}>🏥 {hosp.hospitalName}</div>
+                      <div style={{ fontSize: '0.775rem', color: '#64748b' }}>{hosp.department} ({hosp.designation || 'Doctor'})</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="topbar-right">
             <button className="icon-btn">
               <Bell size={20} />

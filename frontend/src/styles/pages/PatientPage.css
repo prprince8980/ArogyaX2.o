@@ -14,11 +14,11 @@
 
   /* Sidebar */
   --sidebar-w:  240px;
-  --sidebar-bg: hsl(222, 47%, 11%);
-  --sidebar-fg: hsl(215, 20%, 65%);
-  --sidebar-active-bg: rgba(99, 102, 241, 0.18);
-  --sidebar-active-fg: hsl(220, 100%, 80%);
-  --sidebar-hover-bg:  rgba(255,255,255,0.05);
+  --sidebar-bg: #ffffff;
+  --sidebar-fg: hsl(215, 16%, 47%);
+  --sidebar-active-bg: rgba(99, 102, 241, 0.08);
+  --sidebar-active-fg: hsl(217, 91%, 56%);
+  --sidebar-hover-bg:  hsl(220, 14%, 95%);
 
   /* Surface */
   --bg:          hsl(220, 23%, 97%);
@@ -89,6 +89,7 @@
   overflow-x: hidden;
   scrollbar-width: none;
   transition: transform var(--t-slow);
+  border-right: 1px solid var(--border);
 }
 .pd-sidebar::-webkit-scrollbar { display: none; }
 
@@ -98,9 +99,9 @@
   align-items: center;
   gap: 10px;
   padding: 28px 20px 24px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid var(--border);
   text-decoration: none;
-  color: white;
+  color: var(--text-primary);
 }
 .pd-sidebar-logo-icon {
   width: 36px; height: 36px;
@@ -116,7 +117,7 @@
 .pd-sidebar-logo span {
   font-size: 1.15rem;
   font-weight: 700;
-  color: white;
+  color: var(--text-primary);
   letter-spacing: -0.3px;
 }
 
@@ -148,7 +149,7 @@
 }
 .pd-nav-item:hover {
   background: var(--sidebar-hover-bg);
-  color: #e2e8f0;
+  color: var(--text-primary);
   transform: translateX(2px);
 }
 .pd-nav-item.active {
@@ -168,30 +169,34 @@
 .pd-sidebar-help {
   margin: 12px;
   padding: 16px;
-  background: rgba(99,102,241,0.12);
-  border: 1px solid rgba(99,102,241,0.2);
+  background: rgba(99, 102, 241, 0.06);
+  border: 1px solid rgba(99, 102, 241, 0.15);
   border-radius: var(--radius-md);
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-size: 0.78rem;
 }
-.pd-sidebar-help p { color: #cbd5e1; font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; }
+.pd-sidebar-help p { color: var(--text-primary); font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; }
 .pd-sidebar-help small { line-height: 1.5; }
 .pd-support-btn {
   display: block;
   width: 100%;
   margin-top: 12px;
   padding: 8px;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.12);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  color: #e2e8f0;
+  color: var(--text-secondary);
   font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast);
   font-family: inherit;
 }
-.pd-support-btn:hover { background: rgba(255,255,255,0.15); }
+.pd-support-btn:hover {
+  background: var(--surface-alt);
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+}
 
 /* ═══════════════════════════════════════════════════════════
    MAIN AREA

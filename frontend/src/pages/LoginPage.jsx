@@ -5,7 +5,7 @@ import ClinicOnboarding from '../components/ClinicOnboarding';
 import LabOnboarding from '../components/LabOnboarding';
 import HospitalOnboarding from '../components/HospitalOnboarding';
 import RoleSelect from '../components/RoleSelect';
-import arogyaXLogo from '../assets/arogyax-logo.svg';
+import arogyaXLogo from '../assets/arogyax-logo.png';
 import '../styles/pages/LoginPage.css';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '337967019231-2rvoftljiab9cqoanfralqfc3fjtr875.apps.googleusercontent.com';
